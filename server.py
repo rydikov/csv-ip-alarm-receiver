@@ -35,7 +35,7 @@ class ContactIDServer:
         self.event_quals = {
             '1': 'New Event or Opening/Disarm',
             '3': 'New Restore or Closing/Arming',
-            '6': ' Previously reported condition still present (status report)',
+            '6': 'Previously reported condition still present (status report)',
         }
 
     # Method to find the description for event qualifiers using their ID
@@ -136,9 +136,8 @@ def process_alarm(data):
             logger.info("Partition: " + data[4][3])  # Print the partition where the event occurred
             logger.info("Zone / User: " + data[4][4])  # Print the zone or user associated with the event
             # logger.info("Client Code: " + data[2])  # Print the client code associated with the data
-            logger.info("\n")  # Print separators for clarity in output
         else:
-            logger.info("Test ok \n")  # Print test OK
+            logger.info("Test ok")  # Print test OK
     
 
 # Initialize the ContactIDServer with the specified port and the callback function
