@@ -136,6 +136,7 @@ def process_alarm(data):
             logger.info("Partition: " + data[4][3])  # Print the partition where the event occurred
             logger.info("Zone / User: " + data[4][4])  # Print the zone or user associated with the event
             # logger.info("Client Code: " + data[2])  # Print the client code associated with the data
+            logger.info("----------------------------")  # Print separators for clarity in output)
         else:
             logger.info("Test ok")  # Print test OK
     

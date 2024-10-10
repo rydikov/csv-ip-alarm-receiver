@@ -1,9 +1,7 @@
 FROM python:3.12.7-slim
 
+ENV TZ Europe/Moscow
 ENV PYTHONDONTWRITEBYTECODE yes
-
-RUN apt-get update
-RUN apt-get install -y git
 
 WORKDIR /app
 
