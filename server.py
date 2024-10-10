@@ -2,8 +2,13 @@
 import socket
 import csv
 import datetime
+import logging
 
 from io import StringIO
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+logger = logging.getLogger(__name__)
+
 
 # Define a class to handle Contact ID protocol over TCP/IP
 class ContactIDServer:
@@ -22,7 +27,9 @@ class ContactIDServer:
             '110': 'Power Outage',
             '120': 'Panic Alarm',
             '602': 'Service Test Report',
-            '407': 'Remote Arming/Disarming'
+            '407': 'Remote Arming/Disarming',
+            '401': 'Open/Close by User',
+            '441': 'Stay Arming'
         }
         # Dictionary of predefined event qualifiers and their descriptions
         self.event_quals = {
@@ -50,7 +57,7 @@ class ContactIDServer:
     # Method to parse the Contact ID message format
     def parse_contact_id_message(self, contact_id_string):
         if len(contact_id_string) != 11:
-            print(f"Invalid message length: {contact_id_string}")
+            logger.info(f"Invalid message length: {contact_id_string}")
             return ["Invalid message length"]
 
         # Splitting the Contact ID message into components
@@ -85,7 +92,7 @@ class ContactIDServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(5)
-        print(f"Server listening on {self.host}:{self.port}")
+        logger.info(f"Server listening on {self.host}:{self.port}")
         try:
             while True:
                 conn, addr = self.server_socket.accept()
@@ -100,7 +107,7 @@ class ContactIDServer:
                 finally:
                     conn.close()
         except KeyboardInterrupt:
-            print("Server is shutting down.")
+            logger.info("Server is shutting down.")
         finally:
             self.shutdown_server()
 
@@ -108,15 +115,11 @@ class ContactIDServer:
     def shutdown_server(self):
         if self.server_socket:
             self.server_socket.close()
-            print("Server socket has been closed.")
+            logger.info("Server socket has been closed.")
 
 
 
 #######
-import logging
-
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
-logger = logging.getLogger(__name__)
 
 allowed_clients = ['AXPRO']
 
