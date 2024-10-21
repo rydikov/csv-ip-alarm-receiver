@@ -1,7 +1,6 @@
 # Importing necessary modules for network communication and data handling
-import socket
+import asyncio
 import csv
-import datetime
 import logging
 
 from io import StringIO
@@ -16,7 +15,7 @@ class ContactIDServer:
         self.host = host  # IP address the server will listen on
         self.port = port  # Port number the server will listen on
         self.callback = callback  # Callback function to handle processed data
-        self.server_socket = None  # Socket object for the server
+        # self.server_socket = None  # Socket object for the server
         # Dictionary of predefined event codes and their descriptions - Not at all compleate however covers some basics
         self.event_codes = {
             '100': 'Medical Emergency',
@@ -87,37 +86,38 @@ class ContactIDServer:
         self.callback(result)
         return result
 
-    # Method to start the TCP/IP server and handle incoming connections
-    def run_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(5)
-        logger.info(f"Server listening on {self.host}:{self.port}")
+    async def handle_client(self, reader, writer):
+        addr = writer.get_extra_info('peername')
+        logger.info(f'Connection from {addr}')
         try:
             while True:
-                conn, addr = self.server_socket.accept()
-                try:
-                    while True:
-                        data = conn.recv(1024)
-                        if not data:
-                            break
-                        decoded_message = data.decode().strip()
-                        self.parse_csv_alarm_data(decoded_message)  # Process decoded message
-                        conn.sendall(decoded_message.encode())
-                finally:
-                    conn.close()
-        except KeyboardInterrupt:
-            logger.info("Server is shutting down.")
+                data = await reader.read(1024)
+                if not data:
+                    break
+                decoded_message = data.decode().strip()
+                self.parse_csv_alarm_data(decoded_message)  # Process decoded message
+                writer.write(decoded_message.encode())
+                await writer.drain()  # Ensure the data is sent
+        except asyncio.CancelledError:
+            pass
         finally:
-            self.shutdown_server()
+            writer.close()
+            await writer.wait_closed()
+            print(f'Connection closed for {addr}')
 
-    # Method to close the server socket and clean up resources
-    def shutdown_server(self):
-        if self.server_socket:
-            self.server_socket.close()
-            logger.info("Server socket has been closed.")
+    async def run_server(self):
+        server = await asyncio.start_server(self.handle_client, self.host, self.port)
+        addr = server.sockets[0].getsockname()
+        logger.info(f'Serving on {addr}')
 
+        async with server:
+            await server.serve_forever()
 
+    def start(self):
+        try:
+            asyncio.run(self.run_server())
+        except KeyboardInterrupt:
+            print("Server stopped.")
 
 #######
 
@@ -145,4 +145,4 @@ def process_alarm(data):
 server = ContactIDServer(callback=process_alarm)
 
 # Start the server to listen for incoming alarm messages
-server.run_server()
+server.start()

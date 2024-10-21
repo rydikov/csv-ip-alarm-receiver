@@ -1,5 +1,5 @@
 services:
-  bot:
+  receiver:
     build: .
     volumes:
     - ./server.py:/app/server.py
