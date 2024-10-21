@@ -81,7 +81,7 @@ class Event:
 
 
 class ContactIDServer:
-    def __init__(self, host='0.0.0.0', port=5001, callback=None):
+    def __init__(self, host='0.0.0.0', port=5000, callback=None):
         self.host = host
         self.port = port
         self.callback = callback
