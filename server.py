@@ -1,91 +1,91 @@
-# Importing necessary modules for network communication and data handling
 import asyncio
 import csv
 import logging
 
-from io import StringIO
-
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 logger = logging.getLogger(__name__)
 
+SERVICE_TEST_REPORT_CODE = '602'
+CONTACT_ID_LENGTH = 11
+MIN_MESSAGE_LENGTH = 4
 
-# Define a class to handle Contact ID protocol over TCP/IP
+EVENT_CODES = {
+    '100': 'Medical Emergency',
+    '101': 'Fire Alarm',
+    '130': 'Burglary',
+    '137': 'Tamper',
+    '570': 'Bypass',
+    '110': 'Power Outage',
+    '120': 'Panic Alarm',
+    '602': 'Service Test Report',
+    '407': 'Remote Arming/Disarming',
+    '401': 'Open/Close by User',
+    '441': 'Stay Arming'
+}
+
+EVENT_QUALS = {
+    '1': 'New event or opening',
+    '3': 'New restore or closing',
+    '6': 'Previous event',
+}
+
+
+class InvalidEventException(Exception):
+    pass
+
+class Event:
+    """
+    Data example: ,,AXPRO,18340101501
+    """
+    def __init__(self, data):
+
+        message = data.split(',')
+
+        if len(message) < MIN_MESSAGE_LENGTH:
+            raise InvalidEventException("Invalid message size")
+        
+        self.raw = data
+        
+        self.username = message[0]
+        self.password = message[1]
+        self.client_code = message[2]
+        self.cid = message[3]
+
+        if len(self.cid) != CONTACT_ID_LENGTH:
+            raise InvalidEventException("Invalid CID lenght")
+        
+        self.message_type = self.cid[0:2]
+        self.event_qualifier = self.cid[2]
+        self.event_code = self.cid[3:6]
+        self.group = self.cid[6:8]
+        self.sensor_or_user = self.cid[8:11]
+
+    def is_test(self):
+        return self.event_code == SERVICE_TEST_REPORT_CODE
+
+    @property
+    def event_description(self):
+        description = EVENT_CODES.get(self.event_code)
+        if description:
+            return f"{description} ({self.event_code})"
+        else:
+            return f"{self.event_code}"
+
+    @property        
+    def event_quals(self):
+        qualifier = EVENT_QUALS.get(self.event_qualifier)
+        if qualifier:
+            return f"{qualifier} ({self.event_qualifier})"
+        else:
+            return f"{self.event_qualifier}"
+
+
 class ContactIDServer:
-    def __init__(self, host='0.0.0.0', port=5000, callback=None):
-        self.host = host  # IP address the server will listen on
-        self.port = port  # Port number the server will listen on
-        self.callback = callback  # Callback function to handle processed data
-        # self.server_socket = None  # Socket object for the server
-        # Dictionary of predefined event codes and their descriptions - Not at all compleate however covers some basics
-        self.event_codes = {
-            '100': 'Medical Emergency',
-            '101': 'Fire Alarm',
-            '130': 'Burglary',
-            '137': 'Tamper',
-            '570': 'Bypass',
-            '110': 'Power Outage',
-            '120': 'Panic Alarm',
-            '602': 'Service Test Report',
-            '407': 'Remote Arming/Disarming',
-            '401': 'Open/Close by User',
-            '441': 'Stay Arming'
-        }
-        # Dictionary of predefined event qualifiers and their descriptions
-        self.event_quals = {
-            '1': 'New Event or Opening/Disarm',
-            '3': 'New Restore or Closing/Arming',
-            '6': 'Previously reported condition still present (status report)',
-        }
-
-    # Method to find the description for event qualifiers using their ID
-    def find_event_quals(self, event_id):
-        description = self.event_quals.get(event_id)
-        if description:
-            return f"{description} ({event_id})"
-        else:
-            return f"{event_id}"
-
-    # Method to find the description for event codes using their ID
-    def find_event_description(self, event_id):
-        description = self.event_codes.get(event_id)
-        if description:
-            return f"{description} ({event_id})"
-        else:
-            return f"{event_id}"
-
-    # Method to parse the Contact ID message format
-    def parse_contact_id_message(self, contact_id_string):
-        if len(contact_id_string) != 11:
-            logger.info(f"Invalid message length: {contact_id_string}")
-            return ["Invalid message length"]
-
-        # Splitting the Contact ID message into components
-        result = [
-            contact_id_string[0:2],  # Message Type
-            contact_id_string[2],    # Event Qualifier
-            contact_id_string[3:6],  # Account Number
-            contact_id_string[6:8],  # Group or Zone
-            contact_id_string[8:11], # Event Code
-        ]
-        return result
-    
-    # Method to parse CSV formatted alarm data received over TCP/IP
-    def parse_csv_alarm_data(self, data):
-        f = StringIO(data)
-        reader = csv.reader(f, delimiter=',')
-        for row in reader:
-            if row and len(row) >= 4:
-                result = [
-                    row[0],  # username
-                    row[1],  # password
-                    row[2],  # client code
-                    row[3],  # cid
-                    self.parse_contact_id_message(row[3]),  # Parsed CID data
-                ]
-        f.close()
-        self.callback(result)
-        return result
-
+    def __init__(self, host='0.0.0.0', port=5001, callback=None):
+        self.host = host
+        self.port = port
+        self.callback = callback
+        
     async def handle_client(self, reader, writer):
         addr = writer.get_extra_info('peername')
         logger.info(f'Connection from {addr}')
@@ -95,7 +95,14 @@ class ContactIDServer:
                 if not data:
                     break
                 decoded_message = data.decode().strip()
-                self.parse_csv_alarm_data(decoded_message)  # Process decoded message
+
+                try:
+                    event = Event(decoded_message)
+                except InvalidEventException as e:
+                    logger.error(f"Invalid event: {decoded_message} Error: {e}")
+                else:
+                    self.callback(event)
+                
                 writer.write(decoded_message.encode())
                 await writer.drain()  # Ensure the data is sent
         except asyncio.CancelledError:
@@ -103,7 +110,7 @@ class ContactIDServer:
         finally:
             writer.close()
             await writer.wait_closed()
-            print(f'Connection closed for {addr}')
+            logger.info(f'Connection closed for {addr}')
 
     async def run_server(self):
         server = await asyncio.start_server(self.handle_client, self.host, self.port)
@@ -117,28 +124,22 @@ class ContactIDServer:
         try:
             asyncio.run(self.run_server())
         except KeyboardInterrupt:
-            print("Server stopped.")
+            logger.info("Server stopped.")
 
 #######
 
 allowed_clients = ['AXPRO']
 
 # Define the callback function to process received alarm data
-def process_alarm(data):
+def process_alarm(event):
     # Check if the client code is in the allowed list and the event code is not '602' (suppress polling messages)
-    if data[2] in allowed_clients:
-        if data[4][2] != '602':
-            logger.info("Data:  " + str(data))  # Print the entire data list received from the alarm
-            # logger.info("Auth User:  " + data[0]) #Print the Username used for authentication
-            # logger.info("Auth Pass:  " + data[1]) #Print the Password used for authentication
-            logger.info("Event Qualifier: " + server.find_event_quals(data[4][1]))  # Retrieve and print the event qualifier description
-            logger.info("Event Code: " + server.find_event_description(data[4][2]))  # Retrieve and print the event code description
-            logger.info("Partition: " + data[4][3])  # Print the partition where the event occurred
-            logger.info("Zone / User: " + data[4][4])  # Print the zone or user associated with the event
-            # logger.info("Client Code: " + data[2])  # Print the client code associated with the data
-            logger.info("----------------------------")  # Print separators for clarity in output)
+    if event.client_code in allowed_clients:
+        if not event.is_test():
+            logger.info(f"Data received: {event.raw}")
+            logger.info(f"Qualifier: {event.event_quals}. Event: {event.event_description} on partition: {event.group}. Zone/User: {event.sensor_or_user}")
+            logger.info("---------------------------")
         else:
-            logger.info("Test ok")  # Print test OK
+            logger.info("Test ok")
     
 
 # Initialize the ContactIDServer with the specified port and the callback function
