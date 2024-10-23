@@ -1,5 +1,4 @@
 import asyncio
-import csv
 import logging
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
@@ -35,7 +34,7 @@ class InvalidEventException(Exception):
 
 class Event:
     """
-    Data example: ,,AXPRO,18340101501
+    Data example: user,password,AXPRO,18340101501
     """
     def __init__(self, data):
 
@@ -52,7 +51,7 @@ class Event:
         self.cid = message[3]
 
         if len(self.cid) != CONTACT_ID_LENGTH:
-            raise InvalidEventException("Invalid CID lenght")
+            raise InvalidEventException("Invalid CID length")
         
         self.message_type = self.cid[0:2]
         self.event_qualifier = self.cid[2]
@@ -64,17 +63,15 @@ class Event:
         return self.event_code == SERVICE_TEST_REPORT_CODE
 
     @property
-    def event_description(self):
-        description = EVENT_CODES.get(self.event_code)
-        if description:
+    def description(self):
+        if description := EVENT_CODES.get(self.event_code):
             return f"{description} ({self.event_code})"
         else:
             return f"{self.event_code}"
 
-    @property        
-    def event_quals(self):
-        qualifier = EVENT_QUALS.get(self.event_qualifier)
-        if qualifier:
+    @property
+    def qualifier(self):
+        if qualifier := EVENT_QUALS.get(self.event_qualifier):
             return f"{qualifier} ({self.event_qualifier})"
         else:
             return f"{self.event_qualifier}"
@@ -94,12 +91,16 @@ class ContactIDServer:
                 data = await reader.read(1024)
                 if not data:
                     break
-                decoded_message = data.decode().strip()
-
+                try:
+                    decoded_message = data.decode().strip()
+                except UnicodeDecodeError as e:
+                    logger.error(f"Decode error: {e}")
+                    break
                 try:
                     event = Event(decoded_message)
                 except InvalidEventException as e:
                     logger.error(f"Invalid event: {decoded_message} Error: {e}")
+                    break
                 else:
                     self.callback(event)
                 
@@ -135,9 +136,7 @@ def process_alarm(event):
     # Check if the client code is in the allowed list and the event code is not '602' (suppress polling messages)
     if event.client_code in allowed_clients:
         if not event.is_test():
-            logger.info(f"Data received: {event.raw}")
-            logger.info(f"Qualifier: {event.event_quals}. Event: {event.event_description} on partition: {event.group}. Zone/User: {event.sensor_or_user}")
-            logger.info("---------------------------")
+            logger.info(f"Qualifier: {event.qualifier}. Event: {event.description} on partition: {event.group}. Zone/User: {event.sensor_or_user}. Message: {event.raw}")
         else:
             logger.info("Test ok")
     
