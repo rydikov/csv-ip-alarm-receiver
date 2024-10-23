@@ -1,63 +1,92 @@
 import asyncio
 import logging
 
+from dataclasses import dataclass
+
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-SERVICE_TEST_REPORT_CODE = '602'
+SERVICE_TEST_REPORT_CODE = 602
 CONTACT_ID_LENGTH = 11
 MIN_MESSAGE_LENGTH = 4
 
 EVENT_CODES = {
-    '100': 'Medical Emergency',
-    '101': 'Fire Alarm',
-    '130': 'Burglary',
-    '137': 'Tamper',
-    '570': 'Bypass',
-    '110': 'Power Outage',
-    '120': 'Panic Alarm',
-    '602': 'Service Test Report',
-    '407': 'Remote Arming/Disarming',
-    '401': 'Open/Close by User',
-    '441': 'Stay Arming'
+    100: 'Medical Emergency',
+    101: 'Fire Alarm',
+    130: 'Burglary',
+    137: 'Tamper',
+    570: 'Bypass',
+    110: 'Power Outage',
+    120: 'Panic Alarm',
+    602: 'Service Test Report',
+    407: 'Remote Arming/Disarming',
+    401: 'Open/Close by User',
+    441: 'Stay Arming'
 }
 
 EVENT_QUALS = {
-    '1': 'New event or opening',
-    '3': 'New restore or closing',
-    '6': 'Previous event',
+    1: 'New event or opening',
+    3: 'New restore or closing',
+    6: 'Previous event',
 }
 
 
 class InvalidEventException(Exception):
     pass
 
+@dataclass
 class Event:
     """
     Data example: user,password,AXPRO,18340101501
     """
-    def __init__(self, data):
+
+    raw: str
+    username: str
+    password: str
+    client_code: str
+    cid: str
+
+    message_type: int
+    event_qualifier: int
+    event_code: int
+    group: int
+    sensor_or_user: int
+
+    @classmethod
+    def from_data(cls, data):
 
         message = data.split(',')
 
         if len(message) < MIN_MESSAGE_LENGTH:
             raise InvalidEventException("Invalid message size")
         
-        self.raw = data
-        
-        self.username = message[0]
-        self.password = message[1]
-        self.client_code = message[2]
-        self.cid = message[3]
+        raw = data
+        username, password, client_code, cid = message[:MIN_MESSAGE_LENGTH]
 
-        if len(self.cid) != CONTACT_ID_LENGTH:
+        if len(cid) != CONTACT_ID_LENGTH:
             raise InvalidEventException("Invalid CID length")
         
-        self.message_type = self.cid[0:2]
-        self.event_qualifier = self.cid[2]
-        self.event_code = self.cid[3:6]
-        self.group = self.cid[6:8]
-        self.sensor_or_user = self.cid[8:11]
+        try:
+            message_type = int(cid[0:2])
+            event_qualifier = int(cid[2])
+            event_code = int(cid[3:6])
+            group = int(cid[6:8])
+            sensor_or_user = int(cid[8:11])
+        except ValueError as e:
+            raise InvalidEventException(f"Invalid CID format {e}")
+
+        return cls(
+            raw, 
+            username, 
+            password, 
+            client_code, 
+            cid, 
+            message_type, 
+            event_qualifier, 
+            event_code, 
+            group, 
+            sensor_or_user
+        )
 
     def is_test(self):
         return self.event_code == SERVICE_TEST_REPORT_CODE
@@ -92,19 +121,19 @@ class ContactIDServer:
                 if not data:
                     break
                 try:
-                    decoded_message = data.decode().strip()
+                    decoded_data = data.decode().strip()
                 except UnicodeDecodeError as e:
                     logger.error(f"Decode error: {e}")
                     break
                 try:
-                    event = Event(decoded_message)
+                    event = Event.from_data(decoded_data)
                 except InvalidEventException as e:
-                    logger.error(f"Invalid event: {decoded_message} Error: {e}")
+                    logger.error(f"Invalid event: {decoded_data} Error: {e}")
                     break
                 else:
                     self.callback(event)
                 
-                writer.write(decoded_message.encode())
+                writer.write(decoded_data.encode())
                 await writer.drain()  # Ensure the data is sent
         except asyncio.CancelledError:
             pass
