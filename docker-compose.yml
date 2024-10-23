@@ -5,7 +5,13 @@ services:
     - ./server.py:/app/server.py
     ports:
     - 5000:5000
+    env_file: 
+      - path: .env
+        required: true # default
+      - path: ./override.env
+        required: false
     stdin_open: true
     tty: true
     restart: always
     command: python /app/server.py
+    

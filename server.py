@@ -1,5 +1,9 @@
+import os
 import asyncio
 import logging
+import json
+
+import paho.mqtt.publish as publish
 
 from dataclasses import dataclass
 
@@ -97,6 +101,15 @@ class Event:
     def is_test(self):
         return self.event_code == SERVICE_TEST_REPORT_CODE
 
+    def to_mqtt(self):
+        return json.dumps({
+            'client_code': self.client_code,
+            'event_qualifier': self.event_qualifier,
+            'event_code': self.event_code,
+            'group': self.group,
+            'sensor_or_user': self.sensor_or_user,
+        })
+
     @property
     def description(self):
         if description := EVENT_CODES.get(self.event_code):
@@ -113,7 +126,7 @@ class Event:
 
 
 class ContactIDServer:
-    def __init__(self, host='0.0.0.0', port=5000, callback=None):
+    def __init__(self, host, port, callback=None):
         self.host = host
         self.port = port
         self.callback = callback
@@ -167,7 +180,10 @@ class ContactIDServer:
             logger.info("Server stopped.")
 
 
-allowed_clients = ['AXPRO']
+if allowed_clients := os.environ.get('ALLOWED_CLIENTS'):
+    allowed_clients = allowed_clients.split(',')
+else:
+    allowed_clients = ['AXPRO']
 
 
 # Define the callback function to process received alarm data
@@ -179,11 +195,29 @@ def process_alarm(event):
     if event.client_code in allowed_clients:
         if not event.is_test():
             logger.info(f"Qualifier: {event.qualifier}. Event: {event.description} on partition: {event.group}. Zone/User: {event.sensor_or_user}. Message: {event.raw}")
+            try:
+                publish.single(
+                    topic="axpro/topic",
+                    payload=event.to_mqtt(),
+                    client_id=event.client_code,
+                    hostname=os.environ.get('MQTT_HOSTNAME', 'localhost'),
+                    port=int(os.environ.get('MQTT_PORT', 1880)),
+                )
+            except ConnectionRefusedError as e:
+                logger.error(f"MQTT server is not available: {e}")
+            except TimeoutError as e:
+                logger.error(f"MQTT server is not available: {e}")
         else:
             logger.info("Test ok")
+    else:
+        logger.error(f"Client code {event.client_code} is not allowed")
 
 
-server = ContactIDServer(callback=process_alarm)
+server = ContactIDServer(
+    callback=process_alarm,
+    host=os.environ.get('SERVER_HOST', '0.0.0.0'),
+    port=int(os.environ.get('SERVER_PORT', 5000))
+)
 
 # Start the server to listen for incoming alarm messages
 server.start()
