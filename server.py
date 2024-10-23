@@ -3,7 +3,12 @@ import logging
 
 from dataclasses import dataclass
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s %(levelname)s: %(message)s',
+    datefmt='%d/%m/%Y %H:%M:%S'
+)
+
 logger = logging.getLogger(__name__)
 
 SERVICE_TEST_REPORT_CODE = 602
@@ -34,6 +39,7 @@ EVENT_QUALS = {
 class InvalidEventException(Exception):
     pass
 
+
 @dataclass
 class Event:
     """
@@ -59,13 +65,13 @@ class Event:
 
         if len(message) < MIN_MESSAGE_LENGTH:
             raise InvalidEventException("Invalid message size")
-        
+
         raw = data
         username, password, client_code, cid = message[:MIN_MESSAGE_LENGTH]
 
         if len(cid) != CONTACT_ID_LENGTH:
             raise InvalidEventException("Invalid CID length")
-        
+
         try:
             message_type = int(cid[0:2])
             event_qualifier = int(cid[2])
@@ -76,15 +82,15 @@ class Event:
             raise InvalidEventException(f"Invalid CID format {e}")
 
         return cls(
-            raw, 
-            username, 
-            password, 
-            client_code, 
-            cid, 
-            message_type, 
-            event_qualifier, 
-            event_code, 
-            group, 
+            raw,
+            username,
+            password,
+            client_code,
+            cid,
+            message_type,
+            event_qualifier,
+            event_code,
+            group,
             sensor_or_user
         )
 
@@ -111,7 +117,7 @@ class ContactIDServer:
         self.host = host
         self.port = port
         self.callback = callback
-        
+
     async def handle_client(self, reader, writer):
         addr = writer.get_extra_info('peername')
         logger.info(f'Connection from {addr}')
@@ -132,7 +138,7 @@ class ContactIDServer:
                     break
                 else:
                     self.callback(event)
-                
+
                 writer.write(decoded_data.encode())
                 await writer.drain()  # Ensure the data is sent
         except asyncio.CancelledError:
@@ -143,7 +149,11 @@ class ContactIDServer:
             logger.info(f'Connection closed for {addr}')
 
     async def run_server(self):
-        server = await asyncio.start_server(self.handle_client, self.host, self.port)
+        server = await asyncio.start_server(
+            self.handle_client,
+            self.host,
+            self.port
+        )
         addr = server.sockets[0].getsockname()
         logger.info(f'Serving on {addr}')
 
@@ -156,21 +166,23 @@ class ContactIDServer:
         except KeyboardInterrupt:
             logger.info("Server stopped.")
 
-#######
 
 allowed_clients = ['AXPRO']
 
+
 # Define the callback function to process received alarm data
 def process_alarm(event):
-    # Check if the client code is in the allowed list and the event code is not '602' (suppress polling messages)
+    """
+    Check if the client code is in the allowed list
+    and the event code is not '602' (suppress polling messages)
+    """
     if event.client_code in allowed_clients:
         if not event.is_test():
             logger.info(f"Qualifier: {event.qualifier}. Event: {event.description} on partition: {event.group}. Zone/User: {event.sensor_or_user}. Message: {event.raw}")
         else:
             logger.info("Test ok")
-    
 
-# Initialize the ContactIDServer with the specified port and the callback function
+
 server = ContactIDServer(callback=process_alarm)
 
 # Start the server to listen for incoming alarm messages
