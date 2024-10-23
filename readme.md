@@ -36,7 +36,7 @@ Or
 echo -n 'user,password,AXPRO,18340101501' | nc 127.0.0.1 5000
 ```
 
-For test MQQT use
+For MQTT test use
 
 ```python
 import json
