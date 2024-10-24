@@ -47,5 +47,5 @@ def print_msg(client, userdata, message):
     print("%s : %s" % (message.topic, message.payload))
     print(json.loads(message.payload))
 
-subscribe.callback(print_msg, "axpro/topic", hostname="localhost", port=1880)
+subscribe.callback(print_msg, "#", hostname="localhost", port=1880)
 ```

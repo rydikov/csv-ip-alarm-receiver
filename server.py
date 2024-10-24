@@ -197,7 +197,7 @@ def process_alarm(event):
             logger.info(f"Qualifier: {event.qualifier}. Event: {event.description} on partition: {event.group}. Zone/User: {event.sensor_or_user}. Message: {event.raw}")
             try:
                 publish.single(
-                    topic="axpro/topic",
+                    topic=f"security/clients/{event.client_code}/groups/{event.group}/sensors/{event.sensor_or_user}/events",
                     payload=event.to_mqtt(),
                     client_id=event.client_code,
                     hostname=os.environ.get('MQTT_HOSTNAME', 'localhost'),
